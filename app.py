@@ -1,5 +1,8 @@
+import streamlit as st
 import pandas as pd
 import os
+
+# Function Definitions (same as your provided code)
 
 def clean_text(value):
     """Removes unwanted newline characters and extra spaces."""
@@ -58,7 +61,7 @@ def excel_to_text_and_excel(input_excel):
     try:
         df = pd.read_excel(input_excel, sheet_name="Report")
     except Exception as e:
-        print(f"Error reading Excel file: {e}")
+        st.error(f"Error reading Excel file: {e}")
         return
     
     df = df.applymap(clean_text)
@@ -93,11 +96,54 @@ def excel_to_text_and_excel(input_excel):
     formatted_df = pd.DataFrame(formatted_data, columns=get_csr_columns())
     formatted_df.to_excel(output_excel, index=False)
     
-    print(f"Files successfully created: {output_text}, {output_excel}")
+    return output_text, output_excel
+
+# Streamlit App
+
+def main():
+    st.title("Excel to Text and Excel Converter")
+
+    # Upload Excel File Section
+    uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"])
+
+    # File selection dropdown for previous files
+    col1, col2 = st.columns([1, 4])  # Adjusted columns for better layout
+
+    with col2:
+        st.subheader("Select Previous Files")
+        if os.path.exists("./temp"):
+            # List of previously uploaded files (Text or Excel)
+            existing_files = os.listdir("./temp")
+            previous_files = [f for f in existing_files if f.endswith(".txt") or f.endswith(".xlsx")]
+            previous_file = st.selectbox("Choose a file", previous_files)
+
+            # Show the selected previous file with download options
+            if previous_file:
+                file_path = os.path.join("./temp", previous_file)
+                with open(file_path, "rb") as file:
+                    st.download_button(f"Download {previous_file}", file, file_name=previous_file)
+
+    if uploaded_file is not None:
+        input_excel_path = f"./temp/{uploaded_file.name}"
+        os.makedirs(os.path.dirname(input_excel_path), exist_ok=True)
+
+        with open(input_excel_path, "wb") as f:
+            f.write(uploaded_file.getbuffer())
+
+        st.success(f"File '{uploaded_file.name}' uploaded successfully.")
+
+        # Convert file
+        output_text, output_excel = excel_to_text_and_excel(input_excel_path)
+
+        # Display generated files immediately below
+        st.subheader("Generated Files")
+        st.write(f"Text File: {output_text}")
+        with open(output_text, "rb") as file:
+            st.download_button("Download Text File", file, file_name=output_text)
+
+        st.write(f"Excel File: {output_excel}")
+        with open(output_excel, "rb") as file:
+            st.download_button("Download Excel File", file, file_name=output_excel)
 
 if __name__ == "__main__":
-    input_excel_file = input("Enter the Excel filename (including .xlsx extension): ").strip()
-    if os.path.exists(input_excel_file):
-        excel_to_text_and_excel(input_excel_file)
-    else:
-        print("File not found. Please check the filename and try again.")
+    main()
