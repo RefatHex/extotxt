@@ -115,11 +115,24 @@ def main():
             # List of previously uploaded files (Text or Excel)
             existing_files = os.listdir("./temp")
             previous_files = [f for f in existing_files if f.endswith(".txt") or f.endswith(".xlsx")]
+            
+            # Add a file selection dropdown
             previous_file = st.selectbox("Choose a file", previous_files)
-
-            # Show the selected previous file with download options
+            
+            # If a file is selected, show delete button and download option
             if previous_file:
                 file_path = os.path.join("./temp", previous_file)
+                
+                # Add delete button functionality
+                if st.button(f"Delete {previous_file}"):
+                    try:
+                        os.remove(file_path)
+                        st.success(f"File '{previous_file}' deleted successfully.")
+                        st.rerun()  # Refresh the app after deletion
+                    except Exception as e:
+                        st.error(f"Error deleting file: {e}")
+                
+                # Show the selected previous file with download options
                 with open(file_path, "rb") as file:
                     st.download_button(f"Download {previous_file}", file, file_name=previous_file)
 
