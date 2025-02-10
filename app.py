@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import os
+import shutil
 
 # Function Definitions
 
@@ -94,9 +95,9 @@ def main():
             with open(output_text, "rb") as file:
                 st.download_button("Download Text File", file, file_name=os.path.basename(output_text))
 
-    st.subheader("Previously Generated Files")
+    st.subheader("Previously Uploaded and Generated Files")
     if os.path.exists("./temp"):
-        previous_files = [f for f in os.listdir("./temp") if f.endswith(".txt")]
+        previous_files = [f for f in os.listdir("./temp")]
 
         if previous_files:
             selected_file = st.selectbox("Choose a file", previous_files)
@@ -112,13 +113,16 @@ def main():
                 with col2:
                     if st.button(f"Delete {selected_file}"):
                         try:
-                            os.remove(file_path)
-                            st.success(f"File '{selected_file}' deleted successfully.")
-                            st.rerun()
+                            if os.path.exists(file_path):
+                                shutil.rmtree(file_path) if os.path.isdir(file_path) else os.remove(file_path)
+                                st.success(f"File '{selected_file}' deleted successfully.")
+                                st.rerun()
+                            else:
+                                st.error("File not found.")
                         except Exception as e:
                             st.error(f"Error deleting file: {e}")
         else:
-            st.write("No previously generated files found.")
+            st.write("No previously uploaded or generated files found.")
 
 if __name__ == "__main__":
     main()
