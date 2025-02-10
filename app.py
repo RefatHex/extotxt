@@ -2,161 +2,123 @@ import streamlit as st
 import pandas as pd
 import os
 
-# Function Definitions (same as your provided code)
+# Function Definitions
 
 def clean_text(value):
-    """Removes unwanted newline characters and extra spaces."""
     return str(value).strip().replace("\n", "")
 
-def detect_transaction_code(filename):
-    """Determines the transaction type (S, P, I) based on the filename."""
-    filename = filename.lower()
-    if "sale" in filename:
-        return "S"  # Sale
-    elif "purchase" in filename:
-        return "P"  # Purchase
-    elif "inventory" in filename:
-        return "I"  # Inventory
-    return "S"  # Default to Sale if nothing matches
+def detect_transaction_code(row):
+    return clean_text(row.iloc[1] if len(row) > 1 else "S")
 
 def get_last_day_of_month(df):
-    """Determines the last date from the 'DATE' column in MMDDYYYY format."""
-    df["DATE"] = pd.to_datetime(df["DATE"], errors='coerce')
-    last_date = df["DATE"].max()
-    return last_date.strftime('%m%d%Y') if pd.notnull(last_date) else " " * 8
+    df.iloc[:, 8] = pd.to_datetime(df.iloc[:, 8], errors='coerce')
+    valid_dates = df.iloc[:, 8].dropna()
+    
+    if not valid_dates.empty:
+        last_date = valid_dates.max()
+        return last_date.strftime('%m%d%Y') if pd.notnull(last_date) else " " * 8
+    else:
+        return " " * 8
 
 def format_header(last_day):
-    """Creates the control record (header) at the beginning of the file."""
-    reporting_dea = "RY0658940"  # Fixed reporting registrant
+    reporting_dea = "RY0658940"
     asterisk = "*"
-    report_freq = "M"  # Monthly report
-    central_reporter_dea = " " * 9  # 9 spaces (not used)
+    report_freq = "M"
+    central_reporter_dea = " " * 9
     return f"{reporting_dea}{asterisk}{last_day}{report_freq}{central_reporter_dea}"
 
-def get_csr_columns():
-    """Returns the expected column structure for the CSR file."""
-    return [
-        "YAVARI DEA", "Transaction Code", "ACTION INDICATOR", "NDC NUMBER (NO DASHES)",
-        "QUANTITY", "UNIT", "ASSOCIATED REGISTRATION NUMBER", "ORDER FORM NUMBER",
-        "TRANSACTION DATE", "CORRECTION NUMBER", "STRENGTH", "Transaction Number"
-    ]
-
-def format_transaction(row, transaction_code):
-    """Formats a row of transaction data into an 80-character fixed-width format."""
+def format_transaction(row):
     reporting_dea = "RY0658940"
+    transaction_code = detect_transaction_code(row)
     action_indicator = " "
-    ndc_number = clean_text(row["NDC"]).replace("-", "").ljust(11)[:11]
-    quantity = str(row["QUANTITY"]).rjust(8, '0')[:8]
+    ndc_number = clean_text(row.iloc[3]).replace("-", "").ljust(11)[:11]
+    quantity = str(row.iloc[4]).rjust(8, '0')[:8]
     unit = " "
-    associate_dea = clean_text(row["DEA"]).ljust(9)[:9]
+    associate_dea = clean_text(row.iloc[6]).ljust(9)[:9]
     order_form = " " * 9
-    transaction_date = pd.to_datetime(row["DATE"]).strftime('%m%d%Y')
+    
+    transaction_date = pd.to_datetime(row.iloc[8], errors='coerce')
+    transaction_date_str = transaction_date.strftime('%m%d%Y') if pd.notnull(transaction_date) else " " * 8
+
     correction_number = " " * 8
     strength = " " * 4
     transaction_id = str(row.name + 1).rjust(10, '0')[:10]
     filler = " "
-    return f"{reporting_dea}{transaction_code}{action_indicator}{ndc_number}{quantity}{unit}{associate_dea}{order_form}{transaction_date}{correction_number}{strength}{transaction_id}{filler}"
+    
+    return f"{reporting_dea}{transaction_code}{action_indicator}{ndc_number}{quantity}{unit}{associate_dea}{order_form}{transaction_date_str}{correction_number}{strength}{transaction_id}{filler}"
 
-def excel_to_text_and_excel(input_excel):
+def excel_to_text(input_excel):
     try:
-        df = pd.read_excel(input_excel, sheet_name="Report")
+        df_dict = pd.read_excel(input_excel, sheet_name=None, header=None, skiprows=1)
+        first_sheet = list(df_dict.keys())[0]
+        df = df_dict[first_sheet]
     except Exception as e:
         st.error(f"Error reading Excel file: {e}")
-        return
+        return None
     
     df = df.applymap(clean_text)
-    transaction_code = detect_transaction_code(input_excel)
     last_day = get_last_day_of_month(df)
     
-    base_name = os.path.splitext(input_excel)[0]
-    output_text = f"{base_name}.txt"
-    output_excel = f"{base_name}_formatted.xlsx"
-    
-    formatted_data = []
-    
+    output_text = f"{input_excel}.txt"
+
     with open(output_text, 'w') as txt_file:
         header_line = format_header(last_day)
         txt_file.write(header_line + '\n')
 
         for _, row in df.iterrows():
-            formatted_line = format_transaction(row, transaction_code)
+            formatted_line = format_transaction(row)
             txt_file.write(formatted_line + '\n')
-            formatted_data.append([
-                "RY0658940", transaction_code, "",
-                clean_text(row["NDC"]).replace("-", ""),
-                str(row["QUANTITY"]).rjust(8, '0')[:8],
-                "",
-                clean_text(row["DEA"]),
-                "",
-                pd.to_datetime(row["DATE"]).strftime('%m%d%Y'),
-                "", "",
-                str(row.name + 1).rjust(10, '0')[:10]
-            ])
     
-    formatted_df = pd.DataFrame(formatted_data, columns=get_csr_columns())
-    formatted_df.to_excel(output_excel, index=False)
-    
-    return output_text, output_excel
+    return output_text
 
 # Streamlit App
 
 def main():
-    st.title("Excel to Text and Excel Converter")
+    st.title("Excel to Text Converter")
 
-    # Upload Excel File Section
     uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"])
 
-    # File selection dropdown for previous files
-    col1, col2 = st.columns([1, 4])  # Adjusted columns for better layout
-
-    with col2:
-        st.subheader("Select Previous Files")
-        if os.path.exists("./temp"):
-            # List of previously uploaded files (Text or Excel)
-            existing_files = os.listdir("./temp")
-            previous_files = [f for f in existing_files if f.endswith(".txt") or f.endswith(".xlsx")]
-            
-            # Add a file selection dropdown
-            previous_file = st.selectbox("Choose a file", previous_files)
-            
-            # If a file is selected, show delete button and download option
-            if previous_file:
-                file_path = os.path.join("./temp", previous_file)
-                
-                # Add delete button functionality
-                if st.button(f"Delete {previous_file}"):
-                    try:
-                        os.remove(file_path)
-                        st.success(f"File '{previous_file}' deleted successfully.")
-                        st.rerun()  # Refresh the app after deletion
-                    except Exception as e:
-                        st.error(f"Error deleting file: {e}")
-                
-                # Show the selected previous file with download options
-                with open(file_path, "rb") as file:
-                    st.download_button(f"Download {previous_file}", file, file_name=previous_file)
-
     if uploaded_file is not None:
+        os.makedirs("./temp", exist_ok=True)
         input_excel_path = f"./temp/{uploaded_file.name}"
-        os.makedirs(os.path.dirname(input_excel_path), exist_ok=True)
 
         with open(input_excel_path, "wb") as f:
             f.write(uploaded_file.getbuffer())
 
         st.success(f"File '{uploaded_file.name}' uploaded successfully.")
 
-        # Convert file
-        output_text, output_excel = excel_to_text_and_excel(input_excel_path)
+        output_text = excel_to_text(input_excel_path)
 
-        # Display generated files immediately below
-        st.subheader("Generated Files")
-        st.write(f"Text File: {output_text}")
-        with open(output_text, "rb") as file:
-            st.download_button("Download Text File", file, file_name=output_text)
+        if output_text:
+            st.subheader("Generated File")
+            with open(output_text, "rb") as file:
+                st.download_button("Download Text File", file, file_name=os.path.basename(output_text))
 
-        st.write(f"Excel File: {output_excel}")
-        with open(output_excel, "rb") as file:
-            st.download_button("Download Excel File", file, file_name=output_excel)
+    st.subheader("Previously Generated Files")
+    if os.path.exists("./temp"):
+        previous_files = [f for f in os.listdir("./temp") if f.endswith(".txt")]
+
+        if previous_files:
+            selected_file = st.selectbox("Choose a file", previous_files)
+
+            if selected_file:
+                file_path = os.path.join("./temp", selected_file)
+
+                col1, col2 = st.columns(2)
+                with col1:
+                    with open(file_path, "rb") as file:
+                        st.download_button(f"Download {selected_file}", file, file_name=selected_file)
+
+                with col2:
+                    if st.button(f"Delete {selected_file}"):
+                        try:
+                            os.remove(file_path)
+                            st.success(f"File '{selected_file}' deleted successfully.")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error deleting file: {e}")
+        else:
+            st.write("No previously generated files found.")
 
 if __name__ == "__main__":
     main()
