@@ -8,15 +8,25 @@ def detect_transaction_code(row):
     return clean_text(row.iloc[1] if len(row) > 1 else "S")  
 
 def get_last_day_of_month(df):
-    df.iloc[:, 8] = pd.to_datetime(df.iloc[:, 8], errors='coerce')
-    valid_dates = df.iloc[:, 8].dropna()
-    
-    if not valid_dates.empty:
-        last_date = valid_dates.max()
-        return last_date.strftime('%m%d%Y') if pd.notnull(last_date) else " " * 8
-    else:
+    try:
+        # Convert dates to datetime, handling various formats
+        df.iloc[:, 8] = pd.to_datetime(df.iloc[:, 8], format='mixed', errors='coerce')
+        
+        # Filter out invalid dates
+        valid_dates = df.iloc[:, 8].dropna()
+        
+        if not valid_dates.empty:
+            # Get the last day of the month for the maximum date
+            last_date = valid_dates.max()
+            last_day_of_month = last_date.replace(day=1) + pd.offsets.MonthEnd(1)
+            return last_day_of_month.strftime('%m%d%Y')
+        else:
+            return " " * 8
+    except Exception as e:
+        print(f"Error in get_last_day_of_month: {e}")
         return " " * 8
-
+    
+    
 def format_header(last_day):
     reporting_dea = "RY0658940"
     asterisk = "*"
